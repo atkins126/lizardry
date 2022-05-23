@@ -2,39 +2,39 @@
 
 interface
 
-uses idHTTP, Classes;
+uses IdHTTP;
 
 type
   TServer = class(TObject)
   private
+    FIdHTTP: TIdHTTP;
+    FName: string;
     FURL: string;
-    FS: TidHTTP;
   public
-    SL: TStringList;
     function Get(AURL: string): string;
-    constructor Create;
+    function GetFromDB(const S: string): string;
+    constructor Create(const AURL, AName: string);
     destructor Destroy; override;
     class function CheckLoginErrors(const ResponseCode: string): Boolean;
+    class function IsInternetConnected: Boolean;
+    property Name: string read FName write FName;
+    property URL: string read FURL write FURL;
+    property IdHTTP: TIdHTTP read FIdHTTP;
   end;
-
-function IsInternetConnected: Boolean;
 
 var
   Server: TServer;
 
 implementation
 
-uses Forms, Windows, SysUtils, Wininet, Dialogs, Lizardry.FormMain;
+uses Windows, SysUtils, Wininet, Dialogs, Lizardry.FormMain, Lizardry.FormInfo,
+  Lizardry.FormMsg;
 
-const
-  ServerURL = 'http://wallet.pp.ua/lizardry/';
+{ TServer }
 
-  { TServer }
-
-function IsInternetConnected: Boolean;
+class function TServer.IsInternetConnected: Boolean;
 var
   ConnectionType: DWORD;
-
 begin
   Result := False;
   try
@@ -42,6 +42,7 @@ begin
       INTERNET_CONNECTION_PROXY;
     Result := InternetGetConnectedState(@ConnectionType, 0);
   except
+    ShowMsg('Невозможно подключиться к серверу!');
   end;
 end;
 
@@ -53,33 +54,32 @@ begin
   Code := StrToIntDef(ResponseCode, 0);
   case Code of
     21:
-      ShowMessage('Введите логин!');
+      ShowMsg('Введите логин!');
     22:
-      ShowMessage('Введите пароль!');
+      ShowMsg('Введите пароль!');
     31:
-      ShowMessage('Логин не может быть короче 4 символов!');
+      ShowMsg('Логин не может быть короче 4 символов!');
     32:
-      ShowMessage('Пароль не может быть короче 4 символов!');
+      ShowMsg('Пароль не может быть короче 4 символов!');
     41:
-      ShowMessage('Логин не должен быть длиннее 24 символов!');
+      ShowMsg('Логин не должен быть длиннее 24 символов!');
     42:
-      ShowMessage('Пароль не должен быть длиннее 24 символов!');
+      ShowMsg('Пароль не должен быть длиннее 24 символов!');
   else
     Result := False;
   end;
 end;
 
-constructor TServer.Create;
+constructor TServer.Create(const AURL, AName: string);
 begin
-  FS := TidHTTP.Create(nil);
-  FURL := ServerURL;
-  SL := TStringList.Create;
+  FIdHTTP := TIdHTTP.Create(FormMain);
+  FName := AName;
+  FURL := AURL;
 end;
 
 destructor TServer.Destroy;
 begin
-  SL.Free;
-  FS.Free;
+  FIdHTTP.Free;
   inherited;
 end;
 
@@ -88,25 +88,71 @@ begin
   Result := '';
   if not IsInternetConnected then
   begin
-    ShowMessage('Невозможно подключиться к серверу!');
+    ShowMsg('Невозможно подключиться к серверу!');
     Exit;
   end;
   try
-    Result := Trim(FS.Get(FURL + AURL + '&username=' +
-      LowerCase(FormMain.FrameLogin.edUserName.Text) + '&userpass=' +
-      LowerCase(FormMain.FrameLogin.edUserPass.Text)));
+    Result := Trim(FIdHTTP.Get('http://' + URL + '/' + Name + '/' + AURL +
+      '&username=' + LowerCase(FormMain.FrameLogin.edUserName.Text) +
+      '&userpass=' + LowerCase(FormMain.FrameLogin.edUserPass.Text)));
+    if Result = '0' then
+      ShowMsg('Получен не верный ответ от сервера: 0!');
   except
     on E: Exception do
     begin
-      Result := '';
-      ShowMessage(FS.ResponseText);
+      ShowMsg(FIdHTTP.ResponseText);
+      ShowError(Result);
     end;
+    on E: EIdHTTPProtocolException do
+      ShowMsg(E.ErrorMessage);
+    on E: EIdHTTPProtocolException do
+      ShowMsg(IntToStr(E.ErrorCode));
   end;
 end;
 
+function TServer.GetFromDB(const S: string): string;
+begin
+  Result := FIdHTTP.Get('http://' + URL + '/' + Name + '/' + LowerCase(S)
+    + '.php');
+end;
+
+{
+
+  procedure TForm1.FormCreate(Sender: TObject);
+  var
+  ParamList: TStringList;
+  ss: TStringStream;
+  url: string;
+  begin
+  ss := TStringStream.Create('', TEncoding.UTF8);
+  IdHTTP1 := TIdHTTP.Create();
+  ParamList := TStringList.Create;
+  try
+  ParamList.Add('LoginName=xx');
+  ParamList.Add('Password=xx');
+  ParamList.Add('SmsKind=808');
+  ParamList.Add('ExpSmsId=888');
+  url := 'http://...';
+  IdHTTP1.Post(url, ParamList, ss);
+  Memo1.Text := ss.DataString;
+  finally
+  ss.Free;
+  IdHTTP1.Free;
+  ParamList.Free;
+  end;
+  end;
+
+  function TServer.GetFile: string;
+  begin
+  Result := FIdHTTP.Get('http://' + URL + '/' + Name + '/characters/character.'
+  + LowerCase(FormMain.FrameLogin.edUserName.Text) + '.json');
+  end;
+
+}
+
 initialization
 
-Server := TServer.Create;
+Server := TServer.Create('wallet.pp.ua', 'lizardry');
 
 finalization
 
