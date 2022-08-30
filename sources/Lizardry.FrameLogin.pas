@@ -50,6 +50,7 @@ type
     { Public declarations }
     procedure LoadLastEvents;
     procedure LoadFromDBItems;
+    procedure LoadFromDBMessages;
     procedure LoadFromDBEnemies(F: Boolean = False);
   end;
 
@@ -180,6 +181,7 @@ var
   I, EvType, EvLevel, EvGender: Integer;
   EvName, EvStr: string;
 begin
+  // ShowMessage(AJSON);
   Result := '';
   try
     JSONArray := TJSONObject.ParseJSONValue(AJSON) as TJSONArray;
@@ -320,7 +322,34 @@ begin
   FormInfo.RichEdit2.Text := Server.GetFromDB('items');
 end;
 
+procedure TFrameLogin.LoadFromDBMessages;
+var
+  CharName, CharMessage: string;
+  JSONArray: TJSONArray;
+  I: Integer;
+begin
+  try
+    JSONArray := TJSONObject.ParseJSONValue
+      (Server.GetFromDB('messages/messages')) as TJSONArray;
+    FormMain.FrameTown.FrameChat.RichEdit1.Clear;
+    for I := JSONArray.Count - 1 downto 0 do
+    begin
+      CharName := TJSONPair(TJSONObject(JSONArray.Get(I)).Get('message_author'))
+        .JsonValue.Value;
+      CharMessage :=
+        Trim(TJSONPair(TJSONObject(JSONArray.Get(I)).Get('message_text'))
+        .JsonValue.Value);
+      if (CharMessage <> EmptyStr) then
+        FormMain.FrameTown.FrameChat.RichEdit1.Lines.Append
+          (Format('%s: %s', [CharName, CharMessage]));
+    end;
+  except
+  end;
+end;
+
 procedure TFrameLogin.LoadLastEvents;
+var
+  S: string;
 begin
   if not TServer.IsInternetConnected then
   begin
@@ -328,7 +357,9 @@ begin
     Exit;
   end;
   Server.Name := LowerCase(Trim(ComboBox1.Text));
-  StaticText1.Caption := GetEventsText(Server.Get('index.php?action=events'));
+  S := Server.Get('index.php?action=events');
+  if (S[1] = '[') then
+    StaticText1.Caption := GetEventsText(S);
 end;
 
 end.

@@ -21,6 +21,9 @@ object FrameChat: TFrameChat
       Color = clBtnFace
       MaxLength = 250
       TabOrder = 0
+      OnKeyDown = edChatMsgKeyDown
+      ExplicitLeft = 0
+      ExplicitTop = 5
     end
   end
   object Panel2: TPanel
@@ -39,10 +42,11 @@ object FrameChat: TFrameChat
       Color = clBtnFace
       Font.Charset = RUSSIAN_CHARSET
       Font.Color = clWindowText
-      Font.Height = -11
-      Font.Name = 'Tahoma'
+      Font.Height = -19
+      Font.Name = 'Courier New'
       Font.Style = []
       ParentFont = False
+      ReadOnly = True
       ScrollBars = ssVertical
       TabOrder = 0
       Zoom = 100

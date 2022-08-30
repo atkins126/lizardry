@@ -9,7 +9,8 @@ uses
   Vcl.ExtCtrls, Lizardry.FrameBank, Lizardry.FrameDefault, Lizardry.FrameTavern,
   Lizardry.FrameOutlands, Lizardry.FrameBattle, Lizardry.FrameInfo,
   Lizardry.FrameLoot, Lizardry.FrameChat, Lizardry.FrameShop,
-  Lizardry.FrameChar;
+  Lizardry.FrameChar, Lizardry.FrameAfterBattle, Lizardry.FrameBeforeBattle,
+  Lizardry.FrameGetLoot;
 
 type
   TPanel = class(Vcl.ExtCtrls.TPanel)
@@ -74,6 +75,9 @@ type
     Panel2: TPanel;
     SpeedButton3: TSpeedButton;
     Label1: TLabel;
+    FrameAfterBattle1: TFrameAfterBattle;
+    FrameBeforeBattle1: TFrameBeforeBattle;
+    FrameGetLoot1: TFrameGetLoot;
     procedure bbLogoutClick(Sender: TObject);
     procedure LeftPanelClick(Sender: TObject);
     procedure bbDebugClick(Sender: TObject);
@@ -87,6 +91,7 @@ type
     procedure ClearButtons;
     procedure AddButton(const Title, Script: string);
     procedure ChLifePanels(const Cur, Max: string);
+    procedure ChEnemyLifePanels(const Cur, Max: string);
     procedure ChManaPanels(const Cur, Max: string);
     procedure ChExpPanels(const Cur, Max: string);
   public
@@ -103,6 +108,8 @@ type
     function GetRaceDescription(const N: Byte): string;
   end;
 
+function GetLevelExp(const Level: Word): Integer;
+
 var
   RegionLevel: Integer = 1;
   CurrentOutlands: string = '';
@@ -116,6 +123,11 @@ uses Math, JSON, Lizardry.FormMain, Lizardry.Server, Lizardry.FormInfo,
 
 var
   LastCode: string = '';
+
+function GetLevelExp(const Level: Word): Integer;
+begin
+  Result := Level * Level * 5 + (Level * 50);
+end;
 
 procedure TFrameTown.DoAction(S: string);
 begin
@@ -134,21 +146,23 @@ const
     ('Люди - жители Североземья. Испокон веков населяли эти земли. ' +
     'Со временем расселились по всему миру. Люди в меру высоки, достаточно ' +
     'стройны и сильны. У них нет особых преимуществ перед другими расами.',
+    //
     'Эльфы - древние жители этого мира. Давным-давно они населяли леса ' +
     'всех континентов, но со временем их вытеснили другие расы. ' +
     'Теперь эльфы населяют только дремучие пралеса южных земель. ' +
     'Эльфы высоки, стройны и ловки. От других рас их отличают мудрость ' +
     'и превосходные познания в магических науках.',
+    //
     'Гномы - коренные жители горных королевств востока и запада континента. ' +
     'Но сейчас их встречают в горах как северных, так и южных земель. ' +
     'Невысоки ростом, но коренасты и чрезвычайно сильны. Добывают минералы и ' +
-    'руды, из них делают замечательные топоры, щиты и клинки и занимаются ' +
-    'торговлей по всему миру. Из них получаются отличные воины и кузнецы.',
+    'руды, из них делают замечательные топоры, щиты и клинки. ' +
+    'Из них получаются отличные воины и кузнецы.',
+    //
     'Ящеры - болотные жители центральной экваториальной части континента. ' +
-    'Внешне похожи на большых ящериц. Все тело покрыто тонкой чешуйчатой ' +
-    'кожей. На голове бывают разные роговые наросты. ' +
-    'Стройны. Заметно выше людей, но ниже эльфов ростом. Достаточно умны. ' +
-    'Хорошо плавают и умеют дышать под водой.' +
+    'Внешне похожи на больших ящериц. Все тело покрыто тонкой чешуйчатой ' +
+    'кожей. На голове бывают разные роговые наросты. Стройны. Высоки, но ' +
+    'ниже эльфов ростом. Достаточно умны. Хорошо плавают и дышат под водой.' +
     'От других рас отличаются высокой ловкостью и изворотливостью.');
 begin
   Result := RaceName[N];
@@ -314,11 +328,18 @@ begin
   Panel10.Caption := 'ЧАТ';
   FrameChat.BringToFront;
   IsChatMode := True;
+  FormMain.FrameLogin.LoadFromDBMessages;
 end;
 
 procedure TFrameTown.SpeedButton3Click(Sender: TObject);
 begin
   ShowMsg(Label1.Caption);
+end;
+
+procedure TFrameTown.ChEnemyLifePanels(const Cur, Max: string);
+begin
+  FormMain.FrameTown.FrameBattle1.ttEnemyLifeBar.Width :=
+    Round(Cur.ToInteger / Max.ToInteger * HPPanel.Width);
 end;
 
 procedure TFrameTown.ChExpPanels(const Cur, Max: string);
@@ -331,6 +352,8 @@ procedure TFrameTown.ChLifePanels(const Cur, Max: string);
 begin
   Panel1.Width := Round(Cur.ToInteger / Max.ToInteger * HPPanel.Width);
   Panel14.Caption := Format('Здоровье: %s/%s', [Cur, Max]);
+  FrameBattle1.Panel5.Width :=
+    Round(Cur.ToInteger / Max.ToInteger * HPPanel.Width);
   FrameBattle1.Label5.Caption := Format('Здоровье: %s/%s', [Cur, Max]);
 end;
 
@@ -427,6 +450,30 @@ begin
         begin
           CurrentOutlands := S;
           FormMain.FrameTown.FrameLoot1.BringToFront;
+        end;
+      end
+      else if (S = 'get_loot') then
+      begin
+        if JSON.TryGetValue('current_outlands', S) then
+        begin
+          CurrentOutlands := S;
+          FormMain.FrameTown.FrameGetLoot1.BringToFront;
+        end;
+      end
+      else if (S = 'before_battle') then
+      begin
+        if JSON.TryGetValue('current_outlands', S) then
+        begin
+          CurrentOutlands := S;
+          FormMain.FrameTown.FrameBeforeBattle1.BringToFront;
+        end;
+      end
+      else if (S = 'battle') then
+      begin
+        if JSON.TryGetValue('current_outlands', S) then
+        begin
+          CurrentOutlands := S;
+          FormMain.FrameTown.FrameAfterBattle1.BringToFront;
         end;
       end
       else if (S = 'tavern') then
@@ -546,11 +593,12 @@ begin
     end;
     if JSON.TryGetValue('char_exp', Cur) then
     begin
-      ChExpPanels(Cur, IntToStr(StrToIntDef(V, 1) * 100));
+      ChExpPanels(Cur, IntToStr(GetLevelExp(StrToIntDef(V, 1))));
     end;
     if JSON.TryGetValue('char_food', S) then
     begin
       Panel15.Caption := 'Провизия: ' + S + '/7';
+      FormMain.FrameTown.FrameOutlands1.Label1.Caption := S + '/7';
     end;
     if JSON.TryGetValue('char_gold', S) then
       Panel12.Caption := 'Золото: ' + S;
@@ -599,8 +647,11 @@ begin
       FormMain.FrameTown.FrameBattle1.ttEnemyLevel.Caption := 'Уровень: ' + V;
     if JSON.TryGetValue('enemy_life_cur', Cur) and
       JSON.TryGetValue('enemy_life_max', Max) then
+    begin
       FormMain.FrameTown.FrameBattle1.ttEnemyLife.Caption :=
         Format('Здоровье: %s/%s', [Cur, Max]);
+      ChEnemyLifePanels(Cur, Max);
+    end;
     if JSON.TryGetValue('enemy_damage_min', Cur) and
       JSON.TryGetValue('enemy_damage_max', Max) then
       FormMain.FrameTown.FrameBattle1.ttEnemyDamage.Caption :=

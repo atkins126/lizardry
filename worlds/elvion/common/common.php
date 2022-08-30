@@ -105,6 +105,7 @@ function equip_item($item_ident) {
 		case 11:
 		case 12:
 		case 13:
+		case 25:
 			$user['char_gold'] = $user['char_gold'] - $item['item_price'];
 			save_to_log($item['item_name'].' - предмет куплен и перемещен в инвентарь.');
 			add_item($item['item_ident']);
@@ -168,6 +169,7 @@ function pickup_equip_item() {
 		case 12:
 		case 13:
 		case 21:
+		case 25:
 			$r = 'Вы забираете '.$item['item_name'].' себе.';
 			save_to_log($item['item_name'].' - предмет перемещен в инвентарь.');
 			add_item($item['item_ident']);
@@ -206,6 +208,9 @@ function item_values($item_ident) {
 			break;
 		case 13:
 			return $item['item_name'].','.strval($item['item_level']*25).','.get_region_item_level($item['item_level']).','.$item['item_price'];
+			break;
+		case 25:
+			return $item['item_name'].','.strval($item['item_level']).','.get_region_item_level($item['item_level']).','.$item['item_price'];
 			break;
 	}
 }
@@ -318,7 +323,7 @@ function update_user_table($s) {
 }
 
 function get_char_level_exp($level) {
-	return $level * 100;
+	return $level * $level * 5 + ($level * 50);
 }
 
 function get_version() {
@@ -352,45 +357,6 @@ function post_param($value, $default) {
 		$res = $_POST[$value];
 	}
 	return $res;
-}
-
-function outland($location_ident, $enemies, $prev_location = [], $next_location = []) {
-	global $user, $res, $connection, $tb_locations;
-	$user['current_outlands'] = $location_ident;
-	add_enemies($enemies);	
-	$query = "SELECT * FROM ".$tb_locations." WHERE location_ident='".$location_ident."'";
-	$result = mysqli_query($connection, $query) 
-		or die('{"error":"Ошибка считывания данных: '.mysqli_error($connection).'"}');
-	$location = $result->fetch_assoc();
-
-	$user['title'] = $location['location_name'];
-	$user['char_region_location_name'] = $location['location_name'];
-	update_user_table("char_region_location_name='".$user['char_region_location_name']."'");
-	
-	if ($user['char_life_cur'] > 0) {
-		$user['description'] = $location['location_description'];
-	} else shades();
-	$user['frame'] = 'outlands';
-	$user['links'] = array();
-	$n = 0;
-	if ($user['char_life_cur'] > 0) {
-		if (count($prev_location) > 0) {
-			addlink($prev_location[0], $prev_location[1], $n);
-			$n++;
-		}
-		if (count($prev_location) == 0) {
-			go_to_the_gate();
-			$n++;
-		}
-		if (count($next_location) > 0) {
-			addlink($next_location[0], $next_location[1], $n);
-			$n++;
-		}
-	} else
-		go_to_the_graveyard();
-
-	$res = json_encode($user, JSON_UNESCAPED_UNICODE);
-
 }
 
 function add_event($type, $name, $level = 1, $gender = 0, $str = '') {
@@ -447,7 +413,7 @@ function gen_loot() {
 
 		$next = true;
 		$loot_level = $user['char_region'];
-		$loot_type_array = [0,1,8,9,10,11];
+		$loot_type_array = [0,1,8,9,10,11,25];
 		$loot_type = $loot_type_array[array_rand($loot_type_array)];
 		
 		if (($loot_level > 1)&&(rand(0, 4) == 0))
@@ -536,7 +502,7 @@ function char_battle_round() {
 					}
 					return $r;
 				} else if (rand(1, 100) <= 1) {
-					$d += $user['char_damage_max'];
+					$d += rand($user['char_damage_max'], $user['char_damage_max'] * 2);
 					$stat['char_damages'] += $d;
 					$user['enemy_life_cur'] -= $d;
 					if ($user['enemy_life_cur'] > 0) {
@@ -585,6 +551,7 @@ function enemy_battle_round() {
 						$stat['enemy_hits']++;
 						if ($d <= 0) {
 							$r .= $user['enemy_name'].' атакует, но не может пробить вашу защиту.#';
+							$d = 0;
 						} else {
 							if (rand(1, 100) <= 15) {
 								$d = get_glancing_blow_damage($d);
@@ -851,6 +818,9 @@ function item_info($item_ident) {
 		case 13:
 			$ef = 'Покрывает оружие ядом на '.strval($item['item_level']*5).' битв.';
 			break;
+		case 25:
+			$ef = 'Открывает портал в город.';
+			break;
 	}
 	if ($ef == '')
 		die('{"item":""}');
@@ -911,6 +881,14 @@ function use_item($item_ident) {
 				$user['char_mana_cur'] = $user['char_mana_max'];
 			update_user_table("char_life_cur=".$user['char_life_cur'].",char_mana_cur=".$user['char_mana_cur']);
 			$result = ',"char_life_cur":"'.$user['char_life_cur'].'","char_life_max":"'.$user['char_life_max'].'","char_mana_cur":"'.$user['char_mana_cur'].'","char_mana_max":"'.$user['char_mana_max'].'"';
+			break;
+		case 25:
+			if ($user['char_mana_cur'] >= 8) {
+				item_modify($item_ident, -1);
+				$user['char_mana_cur'] -= 8;
+				update_user_table("char_mana_cur=".$user['char_mana_cur']);
+				$result = ',"char_mana_cur":"'.$user['char_mana_cur'].'","char_mana_max":"'.$user['char_mana_max'].'"';
+			} else die('{"error":"Нужно больше маны!"}');
 			break;
 	}
 	return $result;
@@ -1116,7 +1094,11 @@ function after_travel() {
 }
 
 function travel_req($level, $food, $gold) {
-	return ' Но нужно выполнить определенные условия:#Уровень героя - не менее '.$level.'-го.#С собою иметь не менее '.$food.'-x пакетов с провиантом.#Стоимость путешествия - '.$gold.' золотых монет.';
+	return ' Но нужно выполнить определенные условия:#Уровень героя - не менее '.$level.'-го.#С собой иметь не менее '.$food.'-x пакетов с провиантом.#Стоимость путешествия - '.$gold.' золотых монет.';
+}
+
+function travel_price($level) {
+	return $level * 10;
 }
 
 ?>
